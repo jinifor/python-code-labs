@@ -1,6 +1,6 @@
-# KPG to GeoJSON Converter
+# PKL to GeoJSON Converter
 
-KPG (Pickle) 파일을 GeoJSON 형식으로 변환하는 Python 모듈입니다.
+PKL (Pickle) 파일을 GeoJSON 형식으로 변환하는 Python 모듈입니다.
 
 ## 환경 설정
 
@@ -33,16 +33,16 @@ pip install -r requirements.txt
 
 ```bash
 # 환경이 활성화된 상태에서
-python kpg_to_geojson.py input.kpg output.geojson
+python pkl_to_geojson.py input.pkl output.geojson
 ```
 
 ### Python 코드에서 사용
 
 ```python
-from kpg_to_geojson import KPGToGeoJSON
+from pkl_to_geojson import PKLToGeoJSON
 
 # 변환기 초기화
-converter = KPGToGeoJSON("input.kpg")
+converter = PKLToGeoJSON("input.pkl")
 
 # 변환 실행
 converter.convert("output.geojson")
@@ -50,7 +50,7 @@ converter.convert("output.geojson")
 
 ## 기능
 
-- KPG (Pickle) 파일에서 Shapely Polygon 객체 리스트 읽기
+- PKL (Pickle) 파일에서 Shapely Polygon 객체 리스트 읽기
 - Polygon 객체를 GeoJSON 형식으로 변환
 - 각 Polygon에 대한 메타데이터 포함 (ID, 타임스탬프, 면적, 둘레)
 - UTF-8 인코딩으로 GeoJSON 파일 저장
