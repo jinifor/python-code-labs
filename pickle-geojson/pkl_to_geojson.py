@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Union
 from shapely.geometry import Polygon, MultiPolygon, mapping
 import geojson
 from datetime import datetime
+import numpy as np
 
 # Class to convert PKL files to GeoJSON
 class PKLToGeoJSON:
@@ -19,13 +20,13 @@ class PKLToGeoJSON:
         if not self.input_file.exists():
             raise FileNotFoundError(f"Input file not found: {input_file}")
 
-    def read_pkl_file(self) -> List[Polygon]:
+    def read_pkl_file(self) -> List[Union[Polygon, MultiPolygon]]:
         """
-        PKL 파일을 읽어서 Shapely Polygon 리스트로 반환 (0번 인덱스 제외)
+        PKL 파일을 읽어서 Shapely Polygon/MultiPolygon 리스트로 반환 (0번 인덱스 제외)
         - 0번 인덱스는 지점이라 제외함
 
         Returns:
-            List[Polygon]: Shapely Polygon 객체 리스트
+            List[Union[Polygon, MultiPolygon]]: Shapely Polygon/MultiPolygon 객체 리스트
         """
         try:
             print(f"Reading file: {self.input_file}")
@@ -47,14 +48,11 @@ class PKLToGeoJSON:
             else:
                 raise ValueError("No data available after skipping first item")
             
-            # 각 항목을 Polygon으로 변환
+            # 각 항목을 Polygon 또는 MultiPolygon으로 변환
             converted_data = []
             for i, item in enumerate(data):
-                if isinstance(item, Polygon):
+                if isinstance(item, (Polygon, MultiPolygon)):
                     converted_data.append(item)
-                elif isinstance(item, MultiPolygon):
-                    # MultiPolygon의 첫 번째 Polygon만 사용
-                    converted_data.append(item.geoms[0])
                 else:
                     raise ValueError(f"Item {i} is neither a Shapely Polygon nor MultiPolygon, got {type(item)}")
                     
@@ -67,36 +65,65 @@ class PKLToGeoJSON:
             print(f"Error reading PKL file: {str(e)}")
             raise
 
-    def convert_to_geojson(self, polygons: List[Polygon]) -> Dict[str, Any]:
+    def convert_to_geojson(self, geometries: List[Union[Polygon, MultiPolygon]]) -> Dict[str, Any]:
         """
-        Polygon 리스트를 GeoJSON 형식으로 변환
+        Polygon/MultiPolygon 리스트를 GeoJSON 형식으로 변환
         
         Args:
-            polygons (List[Polygon]): Shapely Polygon 객체 리스트
+            geometries (List[Union[Polygon, MultiPolygon]]): Shapely geometry 객체 리스트
             
         Returns:
             Dict[str, Any]: GeoJSON 형식의 딕셔너리
         """
         features = []
         
-        for i, polygon in enumerate(polygons):
-            # Polygon을 GeoJSON 형식으로 변환
-            geometry = mapping(polygon)
-            
-            # Feature 생성
-            feature = geojson.Feature(
-                geometry=geometry,
-                properties={
-                    "id": i,
-                    "timestamp": datetime.now().isoformat(),
-                    "area": polygon.area,
-                    "perimeter": polygon.length
-                }
-            )
-            features.append(feature)
+        for i, geometry in enumerate(geometries):
+            try:
+                if geometry.is_empty:
+                    print(f"Warning: Geometry {i} is empty, skipping...")
+                    continue
+
+                # Geometry를 GeoJSON 형식으로 변환
+                geometry_dict = mapping(geometry)
+                
+                # 면적과 길이 계산
+                try:
+                    area = geometry.area
+                    perimeter = geometry.length
+                except Exception as e:
+                    print(f"Warning: Failed to calculate area/length for geometry {i}: {str(e)}")
+                    area = 0
+                    perimeter = 0
+
+                # Feature 생성
+                feature = geojson.Feature(
+                    geometry=geometry_dict,
+                    properties={
+                        "id": i,
+                        "timestamp": datetime.now().isoformat(),
+                        "area": area,
+                        "perimeter": perimeter
+                    }
+                )
+                features.append(feature)
+
+            except Exception as e:
+                print(f"Warning: Failed to process geometry {i}: {str(e)}")
+                continue
         
-        # FeatureCollection 생성
-        feature_collection = geojson.FeatureCollection(features)
+        if not features:
+            raise ValueError("No valid features after processing all geometries")
+
+        # FeatureCollection 생성 (CRS 정보 포함)
+        feature_collection = geojson.FeatureCollection(
+            features,
+            crs={
+                "type": "name",
+                "properties": {
+                    "name": "EPSG:5179"
+                }
+            }
+        )
         return feature_collection
 
     def save_geojson(self, geojson_data: Dict[str, Any], output_file: str) -> None:
@@ -111,7 +138,7 @@ class PKLToGeoJSON:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(geojson_data, f, ensure_ascii=False, indent=2)
+            json.dump(geojson_data, f, ensure_ascii=False, separators=(',', ':'))
 
     def convert(self, output_file: str) -> None:
         """
@@ -121,10 +148,10 @@ class PKLToGeoJSON:
             output_file (str): 출력 GeoJSON 파일 경로
         """
         # PKL 파일 읽기
-        polygons = self.rea_pkl_file()
+        geometries = self.read_pkl_file()
         
         # GeoJSON으로 변환
-        geojson_data = self.convert_to_geojson(polygons)
+        geojson_data = self.convert_to_geojson(geometries)
         
         # 파일로 저장
         self.save_geojson(geojson_data, output_file)
@@ -144,7 +171,6 @@ def main():
     try:
         converter = PKLToGeoJSON(args.input_file)
         converter.convert(args.output_file)
-        #print(f"Successfully converted {args.input_file} to {args.output_file}")
     except Exception as e:
         print(f"Error: {str(e)}")
         exit(1)
